@@ -1,0 +1,9 @@
+---
+port: 8080
+
+source-streams:
+  - id: 0
+    port: 5555
+
+  - id: 1
+    port: 5556
