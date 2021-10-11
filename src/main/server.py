@@ -8,11 +8,15 @@ import threading
 import collections
 
 from time import sleep
+from flask import Response
 from datetime import datetime
-from flask import Response, url_for
-
+from marshmallow import Schema, fields
 
 logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s", level=logging.DEBUG)
+
+
+class StreamSchema(Schema):
+    source_id = fields.Int()
 
 
 class Stream:
@@ -95,43 +99,13 @@ class FlaskServer:
         def root():
             return "Hello"
 
+        @app.route('/streams')
+        def stream_info():
+            stream_schema = StreamSchema(many=True)
+            return {'streams': stream_schema.dump(stream_buffers)}
+
         @app.route('/streams/<int:stream_id>')
-        def camera(stream_id):
-
-            if 0 <= stream_id < len(stream_buffers):
-                return """<html>
-                             <head>
-                               <meta name="viewport" content="width=device-width, initial-scale=1">
-                               <style>
-                                  img { 
-                                        display: block;
-                                        margin-left: auto;
-                                        margin-right: auto;
-                                  }
-                                  h1 { 
-                                    text-align: center; 
-                                  }
-                                </style>
-                                <title>Camera """ + str(stream_id) + """</title>
-                              </head>
-                              <body>
-                                 <img id="bg" src=""" + url_for(f"video_feed", stream_id=stream_id) + """ style="width:88%;">
-                              </body>
-                            </html>
-                        """
-            return f"""<html>
-                         <head>
-                           <meta name="viewport" content="width=device-width, initial-scale=1">
-                            <title></title>
-                          </head>
-                          <body>
-                             Invalid stream ID: {stream_id}
-                          </body>
-                      </html>
-                   """
-
-        @app.route("/streams/stream/<int:stream_id>")
-        def video_feed(stream_id: int):
+        def stream_by(stream_id: int):
             return Response(FlaskServer.video_stream(stream_id), mimetype='multipart/x-mixed-replace; boundary=frame')
 
         app.run(host="0.0.0.0", port=self.port)
@@ -156,7 +130,6 @@ class Server:
 
         source_streams = server_config['source-streams'] if server_config else []
         for source_stream in source_streams:
-
             stream_id = source_stream['id']
             stream_port = source_stream['port']
 
