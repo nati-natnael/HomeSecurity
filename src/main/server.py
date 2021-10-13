@@ -27,6 +27,7 @@ class Stream:
 
 
 stream_buffers: list[Stream] = []
+class_label: list[str] = []
 
 
 def add_datetime_to(source_image):
@@ -61,6 +62,12 @@ class SourceStreamThread(threading.Thread):
         footage_socket.bind(f"tcp://*:{self.port}")
         footage_socket.setsockopt_string(zmq.SUBSCRIBE, numpy.unicode(''))
 
+        model = cv2.dnn_DetectionModel('src/resources/frozen_inference_graph.pb', 'src/resources/graph.pbtxt')
+        model.setInputSize(320, 320)
+        model.setInputScale(1.0/127.5)
+        model.setInputMean((127.5, 127.5, 127.5))
+        model.setInputSwapRB(True)
+
         while True:
             frame = footage_socket.recv()
             np_image = numpy.frombuffer(frame, dtype=numpy.uint8)
@@ -68,6 +75,16 @@ class SourceStreamThread(threading.Thread):
 
             source = cv2.flip(source, 1)
             add_datetime_to(source)
+
+            class_index, confidence, bbox = model.detect(source, confThreshold=0.5)
+
+            font_scale = 2
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            if len(class_index) > 0 and len(confidence) > 0:
+                for class_ind, conf, boxes in zip(class_index.flatten(), confidence.flatten(), bbox):
+                    if class_ind > 0:
+                        cv2.rectangle(source, boxes, (0, 255, 0), 2)
+                        cv2.putText(source, class_label[class_ind - 1], (boxes[0] + 10, boxes[1] + 40), font, fontScale=font_scale, color=(0, 255, 0), thickness=3)
 
             return_val, buffer = cv2.imencode('.jpg', source)
 
@@ -125,6 +142,13 @@ class Server:
         except IOError as e:
             logging.error(f"Exception encountered, {e}")
             server_config = None
+
+        try:
+            with open('src/resources/coco.names', 'r') as file:
+                class_label.extend(file.read().rstrip('\n').split('\n'))
+
+        except IOError as e:
+            logging.error(f"Exception encountered, {e}")
 
         self.port = server_config['port'] if server_config else self.port
 
