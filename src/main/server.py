@@ -1,3 +1,6 @@
+import asyncio
+
+import websockets
 import zmq
 import cv2
 import yaml
@@ -74,6 +77,33 @@ class SourceStreamThread(threading.Thread):
             stream_buffers[self.id].collection.append(buffer)
 
 
+class WebSocketServer:
+    def __init__(self, port):
+        self.port = port
+        return
+
+    @staticmethod
+    async def echo(web_socket, path):
+        print("A client just connected")
+        stream_id = 0
+
+        logging.info(f"streaming video from stream: {stream_id}")
+
+        stream_buffer = stream_buffers[stream_id]
+
+        while True:
+            if stream_buffer.collection:
+                image = stream_buffer.collection[0]
+                await web_socket.send(image.tobytes())
+
+            sleep(Server.THREAD_SLEEP)
+
+    def run(self):
+        start_server = websockets.serve(WebSocketServer.echo, "localhost", self.port)
+        asyncio.get_event_loop().run_until_complete(start_server)
+        asyncio.get_event_loop().run_forever()
+
+
 class FlaskServer:
     def __init__(self, port):
         self.port = port
@@ -112,7 +142,7 @@ class FlaskServer:
 
 
 class Server:
-    THREAD_SLEEP = 0.0005  # in seconds
+    THREAD_SLEEP = 1  # in seconds
 
     def __init__(self):
         self.port = 8080
@@ -141,5 +171,7 @@ class Server:
 
             logging.info(f"Start source stream, source id {stream_id}, port {stream_port}")
 
-        api = FlaskServer(port=self.port)
+        api = WebSocketServer(port=self.port)
         api.run()
+        # api = FlaskServer(port=self.port)
+        # api.run()
