@@ -5,45 +5,18 @@ import numpy
 import flask
 import logging
 import threading
-import collections
+
 
 from time import sleep
 from flask import Response
 from datetime import datetime
-from marshmallow import Schema, fields
+
+from domain import Stream, StreamSchema
 
 logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 
-
-class StreamSchema(Schema):
-    source_id = fields.Int()
-
-
-class Stream:
-    def __init__(self, source_id, source_port):
-        self.source_id = source_id
-        self.source_port = source_port
-        self.collection = collections.deque(maxlen=5)
-
-
 stream_buffers: list[Stream] = []
 class_label: list[str] = []
-
-
-def add_datetime_to(source_image):
-    if len(source_image.shape) == 2:
-        height, width = source_image.shape
-    else:
-        height, width, _ = source_image.shape
-
-    now = datetime.now()
-    datetime_string = now.strftime("%b %d, %Y %H:%M:%S")
-    org = (10, height - 20)
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 1
-    color = (0, 255, 0)
-    thickness = 1
-    cv2.putText(source_image, datetime_string, org, font, font_scale, color, thickness, cv2.LINE_AA)
 
 
 class SourceStreamThread(threading.Thread):
@@ -53,6 +26,19 @@ class SourceStreamThread(threading.Thread):
         self.port = port
         self.name = name
         return
+
+    @staticmethod
+    def add_datetime_to(source_image):
+        if len(source_image.shape) == 2:
+            height, width = source_image.shape
+        else:
+            height, width, _ = source_image.shape
+
+        datetime_string = datetime.now().strftime("%b %d, %Y %H:%M:%S")
+        org = (10, height - 20)
+        font_scale = 1
+        thickness = 2
+        cv2.putText(source_image, datetime_string, org, Server.FONT, font_scale, Server.TEXT_COLOR, thickness, cv2.LINE_AA)
 
     def run(self):
         logging.info(f"Source stream thread started, listening at {self.port}")
@@ -73,18 +59,21 @@ class SourceStreamThread(threading.Thread):
             np_image = numpy.frombuffer(frame, dtype=numpy.uint8)
             source = cv2.imdecode(np_image, 1)
 
-            source = cv2.flip(source, 1)
-            add_datetime_to(source)
+            SourceStreamThread.add_datetime_to(source)
 
             class_index, confidence, bbox = model.detect(source, confThreshold=0.5)
 
-            font_scale = 2
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            if len(class_index) > 0 and len(confidence) > 0:
-                for class_ind, conf, boxes in zip(class_index.flatten(), confidence.flatten(), bbox):
-                    if class_ind > 0:
-                        cv2.rectangle(source, boxes, (0, 255, 0), 2)
-                        cv2.putText(source, class_label[class_ind - 1], (boxes[0] + 10, boxes[1] + 40), font, fontScale=font_scale, color=(0, 255, 0), thickness=3)
+            flattened_class_index = class_index.flatten() if len(class_index) > 0 else []
+            filtered_index_list = list(filter(lambda ind: ind == 1, flattened_class_index))
+
+            for index in filtered_index_list:
+                boxes = bbox[index - 1]
+                label = class_label[index - 1]
+                label_position = (boxes[0] + 10, boxes[1] + 30)
+
+                cv2.rectangle(source, boxes, Server.BOUNDING_BOX_COLOR, 2)
+                cv2.putText(source, label, label_position, Server.FONT,
+                            fontScale=1, color=Server.TEXT_COLOR, thickness=2)
 
             return_val, buffer = cv2.imencode('.jpg', source)
 
@@ -112,10 +101,6 @@ class FlaskServer:
     def run(self):
         app = flask.Flask("API")
 
-        @app.route("/")
-        def root():
-            return "Hello"
-
         @app.route('/streams')
         def stream_info():
             stream_schema = StreamSchema(many=True)
@@ -130,6 +115,9 @@ class FlaskServer:
 
 class Server:
     THREAD_SLEEP = 0.0005  # in seconds
+    TEXT_COLOR = (0, 255, 0)
+    FONT = cv2.FONT_HERSHEY_SIMPLEX
+    BOUNDING_BOX_COLOR = (0, 255, 0)
 
     def __init__(self):
         self.port = 8080
