@@ -15,8 +15,8 @@ from domain import Stream, StreamSchema
 
 logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 
-stream_buffers: list[Stream] = []
-class_label: list[str] = []
+stream_buffers = []
+class_label = []
 
 
 class SourceStreamThread(threading.Thread):
