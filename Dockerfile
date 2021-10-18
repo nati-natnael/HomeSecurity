@@ -70,4 +70,4 @@ RUN cd ${BUILD_DIR}                                                     					&& 
     make install																	        && \
     ldconfig 																		        && \
     # Remove OpenCV sources and build folder
-    rm -rf /opt/opencv-${OPENCV_VERSION} && rm -rf /opt/opencv_contrib-${OPENCV_VERSION}
+    rm -rf ${BUILD_DIR}/opencv-${OPENCV_VERSION} && rm -rf ${BUILD_DIR}/opencv_contrib-${OPENCV_VERSION}
