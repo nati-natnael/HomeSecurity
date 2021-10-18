@@ -35,7 +35,8 @@ RUN DEBIAN_FRONTEND=noninteractive 	\
     python3-dev  				 && \
     rm -rf /var/lib/apt/lists/*
 
-RUN cd ${BUILD_DIR}                                                     					&& \
+RUN mkdir ${BUILD_DIR}                                                     					&& \
+    cd ${BUILD_DIR}                                                     					&& \
     wget https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip 					&& \
     unzip ${OPENCV_VERSION}.zip 															&& \
     rm ${OPENCV_VERSION}.zip 																&& \
