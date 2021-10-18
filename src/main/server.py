@@ -49,6 +49,8 @@ class SourceStreamThread(threading.Thread):
         footage_socket.setsockopt_string(zmq.SUBSCRIBE, numpy.unicode(''))
 
         model = cv2.dnn_DetectionModel('src/resources/frozen_inference_graph.pb', 'src/resources/graph.pbtxt')
+        model.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+        model.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
         model.setInputSize(320, 320)
         model.setInputScale(1.0/127.5)
         model.setInputMean((127.5, 127.5, 127.5))
