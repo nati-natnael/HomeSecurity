@@ -7,77 +7,68 @@ import threading
 import numpy as np
 import tensorflow as tf
 
+from zmq import Socket
 from time import sleep
 from pathlib import Path
 from flask import Response
 from datetime import datetime
-from domain import Stream, StreamSchema
+from collections import namedtuple
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as viz_utils
+
+from domain import Stream, StreamSchema, ServerConfig, ModelConfig, LabelConfig
 
 logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 
 stream_buffers = []
-class_label = []
 
 
 class SourceStreamThread(threading.Thread):
-    def __init__(self, stream_id=None, port=None, name=None):
+    def __init__(self, stream=None, model_dir=None, label_dir=None):
         super(SourceStreamThread, self).__init__()
-        self.id = stream_id
-        self.port = port
-        self.name = name
+        if stream is None:
+            raise ValueError("stream required")
+
+        self.stream: Stream = stream
+        self.label_dir = label_dir
+        self.model_dir = model_dir
+        self.name = "SourceStreamThread"
         return
 
     @staticmethod
-    def add_datetime_to(source_image):
-        if len(source_image.shape) == 2:
-            height, width = source_image.shape
+    def add_datetime_to(frame):
+        if len(frame.shape) == 2:
+            height, width = frame.shape
         else:
-            height, width, _ = source_image.shape
+            height, width, _ = frame.shape
 
         datetime_string = datetime.now().strftime("%b %d, %Y %H:%M:%S")
-        org = (10, height - 20)
-        font_scale = 1
-        thickness = 2
-        cv2.putText(source_image, datetime_string, org, Server.FONT, font_scale, Server.TEXT_COLOR, thickness,
-                    cv2.LINE_AA)
+
+        cv2.putText(frame, datetime_string, org=(10, height - 20),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1,
+                    color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
 
     def run(self):
-        logging.info(f"Source stream thread started, listening at {self.port}")
+        logging.info(f"Source stream thread started, listening at {self.stream.port}")
 
         context = zmq.Context()
-        footage_socket = context.socket(zmq.SUB)
-        footage_socket.bind(f"tcp://*:{self.port}")
-        footage_socket.setsockopt(zmq.CONFLATE, 1)
-        footage_socket.setsockopt_string(zmq.SUBSCRIBE, np.unicode(''))
+        socket: Socket = context.socket(zmq.SUB)
+        socket.bind(f"tcp://*:{self.stream.port}")
+        socket.setsockopt(zmq.CONFLATE, 1)
+        socket.setsockopt_string(zmq.SUBSCRIBE, np.unicode(''))
 
-        # vid = cv2.VideoCapture(0)
-
-        model_date = "20200711"
-        model_name = "ssd_mobilenet_v2_320x320_coco17_tpu-8"
-        base_url = "http://download.tensorflow.org/models/object_detection/tf2"
-        model_dir = tf.keras.utils.get_file(fname=model_name, origin=f"{base_url}/{model_date}/{model_name}.tar.gz", untar=True)
-
-        filename = 'mscoco_label_map.pbtxt'
-        base_url = 'https://raw.githubusercontent.com/tensorflow/models/master/research/object_detection/data'
-        label_dir = tf.keras.utils.get_file(fname=filename, origin=f"{base_url}/{filename}", untar=False)
-        label_dir = Path(label_dir)
-
-        model = tf.saved_model.load(model_dir + "/saved_model")
+        model = tf.saved_model.load(self.model_dir + "/saved_model")
         detect_fn = model.signatures['serving_default']
 
-        category_index = label_map_util.create_category_index_from_labelmap(label_dir, use_display_name=True)
+        category_index = label_map_util.create_category_index_from_labelmap(self.label_dir, use_display_name=True)
 
         while True:
-            frame = footage_socket.recv()
-            np_image = np.frombuffer(frame, dtype=np.uint8)
+            incoming_frame = socket.recv()
+            np_frame = np.frombuffer(incoming_frame, dtype=np.uint8)
 
-            source = cv2.imdecode(np_image, 1)
+            frame = cv2.imdecode(np_frame, 1)
 
-            # ret, source = vid.read()
-
-            input_tensor = tf.convert_to_tensor(source)
+            input_tensor = tf.convert_to_tensor(frame)
             input_tensor = input_tensor[tf.newaxis, ...]
 
             detections = detect_fn(input_tensor)
@@ -89,7 +80,7 @@ class SourceStreamThread(threading.Thread):
             detections['detection_classes'] = detections['detection_classes'].astype(np.int64)
 
             viz_utils.visualize_boxes_and_labels_on_image_array(
-                source,
+                frame,
                 detections['detection_boxes'],
                 detections['detection_classes'],
                 detections['detection_scores'],
@@ -99,16 +90,16 @@ class SourceStreamThread(threading.Thread):
                 min_score_thresh=.60,
                 agnostic_mode=False)
 
-            SourceStreamThread.add_datetime_to(source)
+            SourceStreamThread.add_datetime_to(frame)
 
-            cv2.imshow("image", source)
+            cv2.imshow("image", frame)
 
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 break
 
-            return_val, buffer = cv2.imencode('.jpg', source)
+            return_val, buffer = cv2.imencode('.jpg', frame)
 
-            stream_buffers[self.id].collection.append(buffer)
+            stream_buffers[self.stream.id].collection.append(buffer)
 
 
 class FlaskServer:
@@ -145,46 +136,50 @@ class FlaskServer:
 
 
 class Server:
-    PATH = Path().absolute()
-    RESOURCE_PATH = f"{PATH}/src/resources"
     THREAD_SLEEP = 0.0005  # in seconds
-    TEXT_COLOR = (0, 255, 0)
-    FONT = cv2.FONT_HERSHEY_SIMPLEX
-    BOUNDING_BOX_COLOR = (0, 255, 0)
 
     def __init__(self):
-        self.port = 8080
+        self.config = ServerConfig(port=8080, source_streams=[])
+
+    def load_server_config(self, config_file_path):
+        try:
+            with open(config_file_path, 'r') as file:
+                config_dict = yaml.safe_load(file)
+
+                self.config.port = config_dict['port']
+
+                model = config_dict['model']
+                model_config: ModelConfig = namedtuple("ModelConfig", model.keys())(*model.values())
+
+                label = config_dict['label']
+                label_config: LabelConfig = namedtuple("LabelConfig", label.keys())(*label.values())
+
+                model_url = f"{model_config.base_url}/{model_config.date}/{model_config.name}.tar.gz"
+                self.config.model_dir = tf.keras.utils.get_file(fname=model_config.name, origin=model_url, untar=True)
+
+                label_url = f"{label_config.base_url}/{label_config.name}"
+                label_dir = tf.keras.utils.get_file(fname=label_config.name, origin=label_url, untar=False)
+                self.config.label_dir = Path(label_dir)
+
+                streams = config_dict['source-streams']
+                for stream in streams:
+                    source_stream = namedtuple("SourceStreamConfig", stream.keys())(*stream.values())
+                    self.config.source_streams.append(source_stream)
+
+        except IOError as e:
+            logging.error(f"Exception encountered, {e}")
 
     def start(self):
-        try:
-            with open('src/resources/application.yml', 'r') as file:
-                server_config = yaml.safe_load(file)
+        self.load_server_config('src/resources/application.yml')
 
-        except IOError as e:
-            logging.error(f"Exception encountered, {e}")
-            server_config = None
+        # Start source stream threads
+        for s_stream in self.config.source_streams:
+            stream_buffers.append(Stream(s_stream.id, s_stream.port, s_stream.queue_size))
 
-        try:
-            with open('src/resources/coco.names', 'r') as file:
-                class_label.extend(file.read().rstrip('\n').split('\n'))
+            s_stream_thread = SourceStreamThread(s_stream, self.config.model_dir, self.config.label_dir)
+            s_stream_thread.start()
 
-        except IOError as e:
-            logging.error(f"Exception encountered, {e}")
+            logging.info(f"Start source stream, source id {s_stream.id}, port {s_stream.port}")
 
-        self.port = server_config['port'] if server_config else self.port
-
-        source_streams = server_config['source-streams'] if server_config else []
-        for source_stream in source_streams:
-            stream_id = source_stream['id']
-            stream_port = source_stream['port']
-
-            stream = Stream(stream_id, stream_port)
-            stream_buffers.append(stream)
-
-            source_stream = SourceStreamThread(stream_id, stream_port, 'SourceStreamThread')
-            source_stream.start()
-
-            logging.info(f"Start source stream, source id {stream_id}, port {stream_port}")
-
-        api = FlaskServer(port=self.port)
+        api = FlaskServer(port=self.config.port)
         api.run()
