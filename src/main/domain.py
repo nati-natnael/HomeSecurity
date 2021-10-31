@@ -4,7 +4,7 @@ from marshmallow import Schema, fields
 
 
 class StreamSchema(Schema):
-    source_id = fields.Int()
+    id = fields.Int()
 
 
 class Stream:
