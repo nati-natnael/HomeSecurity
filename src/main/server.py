@@ -1,17 +1,19 @@
 import zmq
 import cv2
 import yaml
-import numpy
 import flask
 import logging
 import threading
-
+import numpy as np
+import tensorflow as tf
 
 from time import sleep
+from pathlib import Path
 from flask import Response
 from datetime import datetime
-
 from domain import Stream, StreamSchema
+from object_detection.utils import label_map_util
+from object_detection.utils import visualization_utils as viz_utils
 
 logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 
@@ -38,7 +40,8 @@ class SourceStreamThread(threading.Thread):
         org = (10, height - 20)
         font_scale = 1
         thickness = 2
-        cv2.putText(source_image, datetime_string, org, Server.FONT, font_scale, Server.TEXT_COLOR, thickness, cv2.LINE_AA)
+        cv2.putText(source_image, datetime_string, org, Server.FONT, font_scale, Server.TEXT_COLOR, thickness,
+                    cv2.LINE_AA)
 
     def run(self):
         logging.info(f"Source stream thread started, listening at {self.port}")
@@ -46,36 +49,62 @@ class SourceStreamThread(threading.Thread):
         context = zmq.Context()
         footage_socket = context.socket(zmq.SUB)
         footage_socket.bind(f"tcp://*:{self.port}")
-        footage_socket.setsockopt_string(zmq.SUBSCRIBE, numpy.unicode(''))
+        footage_socket.setsockopt(zmq.CONFLATE, 1)
+        footage_socket.setsockopt_string(zmq.SUBSCRIBE, np.unicode(''))
 
-        model = cv2.dnn_DetectionModel('src/resources/frozen_inference_graph.pb', 'src/resources/graph.pbtxt')
-        model.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
-        model.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
-        model.setInputSize(320, 320)
-        model.setInputScale(1.0/127.5)
-        model.setInputMean((127.5, 127.5, 127.5))
-        model.setInputSwapRB(True)
+        # vid = cv2.VideoCapture(0)
+
+        model_date = "20200711"
+        model_name = "ssd_mobilenet_v2_320x320_coco17_tpu-8"
+        base_url = "http://download.tensorflow.org/models/object_detection/tf2"
+        model_dir = tf.keras.utils.get_file(fname=model_name, origin=f"{base_url}/{model_date}/{model_name}.tar.gz", untar=True)
+
+        filename = 'mscoco_label_map.pbtxt'
+        base_url = 'https://raw.githubusercontent.com/tensorflow/models/master/research/object_detection/data'
+        label_dir = tf.keras.utils.get_file(fname=filename, origin=f"{base_url}/{filename}", untar=False)
+        label_dir = Path(label_dir)
+
+        model = tf.saved_model.load(model_dir + "/saved_model")
+        detect_fn = model.signatures['serving_default']
+
+        category_index = label_map_util.create_category_index_from_labelmap(label_dir, use_display_name=True)
 
         while True:
             frame = footage_socket.recv()
-            np_image = numpy.frombuffer(frame, dtype=numpy.uint8)
+            np_image = np.frombuffer(frame, dtype=np.uint8)
+
             source = cv2.imdecode(np_image, 1)
+
+            # ret, source = vid.read()
+
+            input_tensor = tf.convert_to_tensor(source)
+            input_tensor = input_tensor[tf.newaxis, ...]
+
+            detections = detect_fn(input_tensor)
+            num_detections = int(detections.pop('num_detections'))
+
+            detections = {key: value[0, :num_detections].numpy() for key, value in detections.items()}
+            detections['num_detections'] = num_detections
+
+            detections['detection_classes'] = detections['detection_classes'].astype(np.int64)
+
+            viz_utils.visualize_boxes_and_labels_on_image_array(
+                source,
+                detections['detection_boxes'],
+                detections['detection_classes'],
+                detections['detection_scores'],
+                category_index,
+                use_normalized_coordinates=True,
+                max_boxes_to_draw=200,
+                min_score_thresh=.60,
+                agnostic_mode=False)
 
             SourceStreamThread.add_datetime_to(source)
 
-            class_index, confidence, bbox = model.detect(source, confThreshold=0.5)
+            cv2.imshow("image", source)
 
-            flattened_class_index = class_index.flatten() if len(class_index) > 0 else []
-            filtered_index_list = list(filter(lambda ind: ind == 1, flattened_class_index))
-
-            for index in filtered_index_list:
-                boxes = bbox[index - 1]
-                label = class_label[index - 1]
-                label_position = (boxes[0] + 10, boxes[1] + 30)
-
-                cv2.rectangle(source, boxes, Server.BOUNDING_BOX_COLOR, 2)
-                cv2.putText(source, label, label_position, Server.FONT,
-                            fontScale=1, color=Server.TEXT_COLOR, thickness=2)
+            if cv2.waitKey(25) & 0xFF == ord('q'):
+                break
 
             return_val, buffer = cv2.imencode('.jpg', source)
 
@@ -116,6 +145,8 @@ class FlaskServer:
 
 
 class Server:
+    PATH = Path().absolute()
+    RESOURCE_PATH = f"{PATH}/src/resources"
     THREAD_SLEEP = 0.0005  # in seconds
     TEXT_COLOR = (0, 255, 0)
     FONT = cv2.FONT_HERSHEY_SIMPLEX
