@@ -20,7 +20,7 @@ from domain import Stream, StreamSchema, ServerConfig, ModelConfig, LabelConfig
 
 logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 
-stream_buffers = []
+shared_stream_buffers = []
 
 
 class SourceStreamThread(threading.Thread):
@@ -62,6 +62,8 @@ class SourceStreamThread(threading.Thread):
 
         category_index = label_map_util.create_category_index_from_labelmap(self.label_dir, use_display_name=True)
 
+        stream_buffer = shared_stream_buffers[self.stream.id]
+
         while True:
             incoming_frame = socket.recv()
             np_frame = np.frombuffer(incoming_frame, dtype=np.uint8)
@@ -99,7 +101,7 @@ class SourceStreamThread(threading.Thread):
 
             return_val, buffer = cv2.imencode('.jpg', frame)
 
-            stream_buffers[self.stream.id].collection.append(buffer)
+            stream_buffer.collection.append(buffer)
 
 
 class FlaskServer:
@@ -111,7 +113,7 @@ class FlaskServer:
     def video_stream(stream_id: int):
         logging.info(f"streaming video from stream: {stream_id}")
 
-        stream_buffer = stream_buffers[stream_id]
+        stream_buffer = shared_stream_buffers[stream_id]
 
         while True:
             if stream_buffer.collection:
@@ -126,7 +128,7 @@ class FlaskServer:
         @app.route('/streams')
         def stream_info():
             stream_schema = StreamSchema(many=True)
-            return {'streams': stream_schema.dump(stream_buffers)}
+            return {'streams': stream_schema.dump(shared_stream_buffers)}
 
         @app.route('/streams/<int:stream_id>')
         def stream_by(stream_id: int):
@@ -174,7 +176,7 @@ class Server:
 
         # Start source stream threads
         for s_stream in self.config.source_streams:
-            stream_buffers.append(Stream(s_stream.id, s_stream.port, s_stream.queue_size))
+            shared_stream_buffers.append(Stream(s_stream.id, s_stream.port, s_stream.queue_size))
 
             s_stream_thread = SourceStreamThread(s_stream, self.config.model_dir, self.config.label_dir)
             s_stream_thread.start()
