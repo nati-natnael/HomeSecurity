@@ -1,3 +1,6 @@
+import asyncio
+import websockets
+
 import zmq
 import cv2
 import yaml
@@ -7,11 +10,11 @@ import threading
 import numpy as np
 import tensorflow as tf
 
+from datetime import datetime
 from zmq import Socket
 from time import sleep
 from pathlib import Path
 from flask import Response
-from datetime import datetime
 from collections import namedtuple
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as viz_utils
@@ -34,19 +37,6 @@ class SourceStreamThread(threading.Thread):
         self.model_dir = model_dir
         self.name = "SourceStreamThread"
         return
-
-    @staticmethod
-    def add_datetime_to(frame):
-        if len(frame.shape) == 2:
-            height, width = frame.shape
-        else:
-            height, width, _ = frame.shape
-
-        datetime_string = datetime.now().strftime("%b %d, %Y %H:%M:%S")
-
-        cv2.putText(frame, datetime_string, org=(10, height - 20),
-                    fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1,
-                    color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
 
     def run(self):
         logging.info(f"Source stream thread started, listening at {self.stream.port}")
@@ -91,8 +81,6 @@ class SourceStreamThread(threading.Thread):
                 max_boxes_to_draw=200,
                 min_score_thresh=.60,
                 agnostic_mode=False)
-
-            SourceStreamThread.add_datetime_to(frame)
 
             cv2.imshow("image", frame)
 
@@ -183,5 +171,25 @@ class Server:
 
             logging.info(f"Start source stream, source id {s_stream.id}, port {s_stream.port}")
 
-        api = FlaskServer(port=self.config.port)
-        api.run()
+        # api = FlaskServer(port=self.config.port)
+        # api.run()
+
+        async def video_stream(web_socket, path):
+
+            logging.info(f"streaming video from stream: {0}")
+
+            stream_buffer = shared_stream_buffers[0]
+
+            while True:
+                if stream_buffer.collection:
+                    image = stream_buffer.collection[0]
+                    data = image.tobytes()
+                    await web_socket.send(data)
+                    await asyncio.sleep(1)
+
+                sleep(Server.THREAD_SLEEP)
+
+        start_server = websockets.serve(video_stream, '127.0.0.1', self.config.port)
+
+        asyncio.get_event_loop().run_until_complete(start_server)
+        asyncio.get_event_loop().run_forever()
