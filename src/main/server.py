@@ -11,7 +11,6 @@ from zmq import Socket
 from time import sleep
 from pathlib import Path
 from flask import Response
-from datetime import datetime
 from collections import namedtuple
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as viz_utils
@@ -24,29 +23,18 @@ shared_stream_buffers = []
 
 
 class SourceStreamThread(threading.Thread):
-    def __init__(self, stream=None, model_dir=None, label_dir=None):
+    def __init__(self, stream=None, model_dir=None, label_dir=None, object_detection_enabled=False):
         super(SourceStreamThread, self).__init__()
         if stream is None:
             raise ValueError("stream required")
 
+        self.object_detection_enabled = object_detection_enabled
+        self.name = "SourceStreamThread"
         self.stream: Stream = stream
         self.label_dir = label_dir
         self.model_dir = model_dir
         self.name = "SourceStreamThread"
         return
-
-    @staticmethod
-    def add_datetime_to(frame):
-        if len(frame.shape) == 2:
-            height, width = frame.shape
-        else:
-            height, width, _ = frame.shape
-
-        datetime_string = datetime.now().strftime("%b %d, %Y %H:%M:%S")
-
-        cv2.putText(frame, datetime_string, org=(10, height - 20),
-                    fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1,
-                    color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
 
     def run(self):
         logging.info(f"Source stream thread started, listening at {self.stream.port}")
@@ -92,16 +80,9 @@ class SourceStreamThread(threading.Thread):
                 min_score_thresh=.60,
                 agnostic_mode=False)
 
-            SourceStreamThread.add_datetime_to(frame)
-
-            cv2.imshow("image", frame)
-
-            if cv2.waitKey(25) & 0xFF == ord('q'):
-                break
-
             return_val, buffer = cv2.imencode('.jpg', frame)
 
-            stream_buffer.collection.append(buffer)
+            stream_buffer.collection.append(buffer.tobytes())
 
 
 class FlaskServer:
@@ -118,7 +99,7 @@ class FlaskServer:
         while True:
             if stream_buffer.collection:
                 image = stream_buffer.collection[0]
-                yield b' --frame\r\n' b'Content-type: image/jpeg\r\n\r\n' + image.tobytes() + b'\r\n'
+                yield b' --frame\r\n' b'Content-type: image/jpeg\r\n\r\n' + image + b'\r\n'
 
             sleep(Server.THREAD_SLEEP)
 
@@ -178,7 +159,12 @@ class Server:
         for s_stream in self.config.source_streams:
             shared_stream_buffers.append(Stream(s_stream.id, s_stream.port, s_stream.queue_size))
 
-            s_stream_thread = SourceStreamThread(s_stream, self.config.model_dir, self.config.label_dir)
+            s_stream_thread = SourceStreamThread(
+                s_stream,
+                self.config.model_dir,
+                self.config.label_dir,
+                s_stream.object_detection_enabled)
+
             s_stream_thread.start()
 
             logging.info(f"Start source stream, source id {s_stream.id}, port {s_stream.port}")

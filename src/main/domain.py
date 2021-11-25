@@ -23,10 +23,11 @@ class ServerConfig:
 
 
 class SourceStreamConfig:
-    def __init__(self, source_id, port, queue_size):
+    def __init__(self, source_id, port, queue_size, object_detection_enabled):
         self.id = source_id
         self.port = port
         self.queue_size = queue_size
+        self.object_detection_enabled = object_detection_enabled
 
 
 class ModelConfig:
