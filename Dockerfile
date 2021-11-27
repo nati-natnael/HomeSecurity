@@ -1,4 +1,4 @@
-FROM python:3
+FROM python:3.7
 
 ENV APP_NAME=homesecurity
 ENV WORK_DIR=/usr/${APP_NAME}
