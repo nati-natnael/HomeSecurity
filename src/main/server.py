@@ -33,7 +33,6 @@ class SourceStreamThread(threading.Thread):
         self.stream: Stream = stream
         self.label_dir = label_dir
         self.model_dir = model_dir
-        self.name = "SourceStreamThread"
         return
 
     def run(self):
