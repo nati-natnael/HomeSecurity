@@ -2,6 +2,7 @@ FROM ubuntu:latest
 
 ENV APP_NAME=homesecurity
 ENV WORK_DIR=/usr/${APP_NAME}
+ENV PYTHON_VERSION=3.7.0
 
 WORKDIR ${WORK_DIR}
 
@@ -12,8 +13,22 @@ RUN apt-get update && apt-get upgrade -y
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get install -y             \
     python3.7                      \
+    zlib1g-dev                     \
+    libffi-dev                     \
+    wget                           \
+    gcc                            \
+    make                           \
     vim
 
-RUN python3 -m venv ${WORK_DIR}/venv
+RUN wget https://www.python.org/ftp/python/3.7.0/Python-3.7.0.tgz &&\
+    tar xzf Python-3.7.0.tgz                                                  &&\
+    Python-3.7.0/configure --enable-optimizations --prefix=/usr/bin/python3   &&\
+    make altinstall                                                                       &&\
+    ln -s /usr/bin/python3/bin/python3.7 /usr/bin/python                               &&\
+    rm Python-3.7.0.tgz                                                       &&\
+    wget https://bootstrap.pypa.io/get-pip.py 				                              &&\
+    python get-pip.py
 
-RUN pip install -r ${WORK_DIR}/requirements.txt
+
+RUN python -m venv ${WORK_DIR}/venv
+    pip install -r ${WORK_DIR}/requirements.txt
