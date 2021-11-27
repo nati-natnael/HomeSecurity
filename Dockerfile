@@ -15,6 +15,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
     python3.7                      \
     zlib1g-dev                     \
     libffi-dev                     \
+    libssl-dev                     \
     wget                           \
     gcc                            \
     make                           \
@@ -22,9 +23,8 @@ RUN DEBIAN_FRONTEND=noninteractive \
 
 RUN wget https://www.python.org/ftp/python/3.7.0/Python-3.7.0.tgz           &&\
     tar xzf Python-3.7.0.tgz                                                &&\
-    Python-3.7.0/configure --enable-optimizations --prefix=/usr/bin/python3 &&\
+    Python-3.7.0/configure --enable-optimizations --prefix=/usr/bin/python  &&\
     make altinstall                                                         &&\
-    ln -s /usr/bin/python3/bin/python3.7 /usr/bin/python                    &&\
     rm Python-3.7.0.tgz                                                     &&\
     wget https://bootstrap.pypa.io/get-pip.py 				                &&\
     python get-pip.py
