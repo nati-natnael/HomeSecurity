@@ -14,9 +14,7 @@ source-streams:
   - id: 0
     port: 5555
     queue_size: 5
-    object_detection_enabled: true
 
   - id: 1
     port: 5556
     queue_size: 5
-    object_detection_enabled: false

@@ -23,12 +23,11 @@ shared_stream_buffers = []
 
 
 class SourceStreamThread(threading.Thread):
-    def __init__(self, stream=None, model_dir=None, label_dir=None, object_detection_enabled=False):
+    def __init__(self, stream=None, model_dir=None, label_dir=None):
         super(SourceStreamThread, self).__init__()
         if stream is None:
             raise ValueError("stream required")
 
-        self.object_detection_enabled = object_detection_enabled
         self.name = "SourceStreamThread"
         self.stream: Stream = stream
         self.label_dir = label_dir
@@ -161,8 +160,7 @@ class Server:
             s_stream_thread = SourceStreamThread(
                 s_stream,
                 self.config.model_dir,
-                self.config.label_dir,
-                s_stream.object_detection_enabled)
+                self.config.label_dir)
 
             s_stream_thread.start()
 
