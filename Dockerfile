@@ -2,6 +2,7 @@ FROM ubuntu:latest
 
 ENV APP_NAME=homesecurity
 ENV WORK_DIR=/usr/${APP_NAME}
+ENV BUILD_DIR=${WORK_DIR}/build
 
 WORKDIR ${WORK_DIR}
 
@@ -20,16 +21,13 @@ RUN DEBIAN_FRONTEND=noninteractive \
     make                           \
     vim
 
-RUN wget https://www.python.org/ftp/python/3.7.0/Python-3.7.0.tgz            &&\
+RUN cd ${BUILD_DIR}                                                          &&\
+    wget https://www.python.org/ftp/python/3.7.0/Python-3.7.0.tgz            &&\
     tar xzf Python-3.7.0.tgz                                                 &&\
     Python-3.7.0/configure --enable-optimizations --prefix=/usr/bin/python3  &&\
     make altinstall                                                          &&\
     ln -s /usr/bin/python3/bin/python3.7 /usr/bin/python                     &&\
-    rm Python-3.7.0.tgz
-
-#RUN wget https://bootstrap.pypa.io/get-pip.py &&\
-#    python get-pip.py
-#
-#
-#RUN python -m venv ${WORK_DIR}/venv               &&\
-#    pip install -r ${WORK_DIR}/requirements.txt
+    rm Python-3.7.0.tgz                                                      &&\
+    wget https://bootstrap.pypa.io/get-pip.py                                &&\
+    python get-pip.py                                                        &&\
+    pip install -r ${WORK_DIR}/requirements.txt
