@@ -21,7 +21,8 @@ RUN DEBIAN_FRONTEND=noninteractive \
     make                           \
     vim
 
-RUN cd ${BUILD_DIR}                                                          &&\
+RUN mkdir ${BUILD_DIR}                                                       &&\
+    cd ${BUILD_DIR}                                                          &&\
     wget https://www.python.org/ftp/python/3.7.0/Python-3.7.0.tgz            &&\
     tar xzf Python-3.7.0.tgz                                                 &&\
     Python-3.7.0/configure --enable-optimizations --prefix=/usr/bin/python3  &&\
