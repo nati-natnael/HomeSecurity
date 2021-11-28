@@ -30,4 +30,5 @@ RUN cd ${BUILD_DIR}                                                          &&\
     rm Python-3.7.0.tgz                                                      &&\
     wget https://bootstrap.pypa.io/get-pip.py                                &&\
     python get-pip.py                                                        &&\
+    ln -s /usr/bin/python3/bin/pip3.7 /usr/bin/pip                           &&\
     pip install -r ${WORK_DIR}/requirements.txt
