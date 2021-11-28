@@ -16,6 +16,9 @@ RUN DEBIAN_FRONTEND=noninteractive \
     zlib1g-dev                     \
     libffi-dev                     \
     libssl-dev                     \
+    ffmpeg                         \
+    libsm6                         \
+    libxext6                       \
     wget                           \
     gcc                            \
     make                           \
