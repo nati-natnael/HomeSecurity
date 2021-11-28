@@ -20,6 +20,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
     ffmpeg                         \
     libsm6                         \
     libxext6                       \
+    protobuf-compiler              \
     wget                           \
     git                            \
     gcc                            \
