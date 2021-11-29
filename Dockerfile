@@ -50,6 +50,6 @@ RUN mkdir ${BUILD_DIR}                                                          
     git clone https://github.com/tensorflow/models.git ${TENSORFLOW_MODELS}           &&\
     cd ${TENSORFLOW_MODELS}/research                                                  &&\
     protoc object_detection/protos/*.proto --python_out=.                             &&\
-    export PYTHONPATH=$PYTHONPATH:${tensorflow}/research:${tensorflow}/research/slim
+    export PYTHONPATH=$PYTHONPATH:${TENSORFLOW_MODELS}/research:${TENSORFLOW_MODELS}/research/slim
 
 
