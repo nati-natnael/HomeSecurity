@@ -5,6 +5,8 @@ ENV WORK_DIR=/usr/${APP_NAME}
 ENV BUILD_DIR=${WORK_DIR}/build
 ENV TENSORFLOW_MODELS=${BUILD_DIR}/tensorflow/models
 
+ENV PYTHONPATH=:${TENSORFLOW_MODELS}/research:${TENSORFLOW_MODELS}/research/slim
+
 WORKDIR ${WORK_DIR}
 
 COPY . .
@@ -49,7 +51,5 @@ RUN mkdir ${BUILD_DIR}                                                          
     # Install tensorflow object detection utils
     git clone https://github.com/tensorflow/models.git ${TENSORFLOW_MODELS}           &&\
     cd ${TENSORFLOW_MODELS}/research                                                  &&\
-    protoc object_detection/protos/*.proto --python_out=.                             &&\
-    export PYTHONPATH=$PYTHONPATH:${TENSORFLOW_MODELS}/research:${TENSORFLOW_MODELS}/research/slim
-
+    protoc object_detection/protos/*.proto --python_out=.
 
