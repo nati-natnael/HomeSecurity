@@ -12,8 +12,8 @@ from time import sleep
 from pathlib import Path
 from flask import Response
 from collections import namedtuple
-from object_detection.utils import label_map_util
-from object_detection.utils import visualization_utils as viz_utils
+# from object_detection.utils import label_map_util
+# from object_detection.utils import visualization_utils as viz_utils
 
 from domain import Stream, StreamSchema, ServerConfig, ModelConfig, LabelConfig
 
@@ -151,7 +151,7 @@ class Server:
             logging.error(f"Exception encountered, {e}")
 
     def start(self):
-        self.load_server_config('src/resources/application.yml')
+        self.load_server_config('/src/resources/application.yml')
 
         # Start source stream threads
         for s_stream in self.config.source_streams:
