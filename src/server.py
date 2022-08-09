@@ -5,17 +5,13 @@ import flask
 import logging
 import threading
 import numpy as np
-import tensorflow as tf
 
 from zmq import Socket
 from time import sleep
-from pathlib import Path
 from flask import Response
 from collections import namedtuple
-# from object_detection.utils import label_map_util
-# from object_detection.utils import visualization_utils as viz_utils
 
-from domain import Stream, StreamSchema, ServerConfig, ModelConfig, LabelConfig
+from domain import Stream, StreamSchema, ServerConfig
 
 logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 
@@ -43,44 +39,11 @@ class SourceStreamThread(threading.Thread):
         socket.setsockopt(zmq.CONFLATE, 1)
         socket.setsockopt_string(zmq.SUBSCRIBE, np.unicode(''))
 
-        # model = tf.saved_model.load(self.model_dir + "/saved_model")
-        # detect_fn = model.signatures['serving_default']
-        #
-        # category_index = label_map_util.create_category_index_from_labelmap(self.label_dir, use_display_name=True)
-
         stream_buffer = shared_stream_buffers[self.stream.id]
 
         while True:
             incoming_frame = socket.recv()
-            np_frame = np.frombuffer(incoming_frame, dtype=np.uint8)
-
-            frame = cv2.imdecode(np_frame, 1)
-
-            # input_tensor = tf.convert_to_tensor(frame)
-            # input_tensor = input_tensor[tf.newaxis, ...]
-            #
-            # detections = detect_fn(input_tensor)
-            # num_detections = int(detections.pop('num_detections'))
-            #
-            # detections = {key: value[0, :num_detections].numpy() for key, value in detections.items()}
-            # detections['num_detections'] = num_detections
-            #
-            # detections['detection_classes'] = detections['detection_classes'].astype(np.int64)
-            #
-            # viz_utils.visualize_boxes_and_labels_on_image_array(
-            #     frame,
-            #     detections['detection_boxes'],
-            #     detections['detection_classes'],
-            #     detections['detection_scores'],
-            #     category_index,
-            #     use_normalized_coordinates=True,
-            #     max_boxes_to_draw=200,
-            #     min_score_thresh=.60,
-            #     agnostic_mode=False)
-
-            return_val, buffer = cv2.imencode('.jpg', frame)
-
-            stream_buffer.collection.append(buffer.tobytes())
+            stream_buffer.collection.append(incoming_frame)
 
 
 class FlaskServer:
@@ -129,19 +92,6 @@ class Server:
 
                 self.config.port = config_dict['port']
 
-                model = config_dict['model']
-                model_config: ModelConfig = namedtuple("ModelConfig", model.keys())(*model.values())
-
-                label = config_dict['label']
-                label_config: LabelConfig = namedtuple("LabelConfig", label.keys())(*label.values())
-
-                model_url = f"{model_config.base_url}/{model_config.date}/{model_config.name}.tar.gz"
-                self.config.model_dir = tf.keras.utils.get_file(fname=model_config.name, origin=model_url, untar=True)
-
-                label_url = f"{label_config.base_url}/{label_config.name}"
-                label_dir = tf.keras.utils.get_file(fname=label_config.name, origin=label_url, untar=False)
-                self.config.label_dir = Path(label_dir)
-
                 streams = config_dict['source-streams']
                 for stream in streams:
                     source_stream = namedtuple("SourceStreamConfig", stream.keys())(*stream.values())
@@ -151,7 +101,7 @@ class Server:
             logging.error(f"Exception encountered, {e}")
 
     def start(self):
-        self.load_server_config('/src/resources/application.yml')
+        self.load_server_config('application.yml')
 
         # Start source stream threads
         for s_stream in self.config.source_streams:
