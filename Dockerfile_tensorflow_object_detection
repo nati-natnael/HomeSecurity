@@ -3,6 +3,9 @@ FROM ubuntu:latest
 ENV APP_NAME=homesecurity
 ENV WORK_DIR=/usr/${APP_NAME}
 ENV BUILD_DIR=${WORK_DIR}/build
+ENV TENSORFLOW_MODELS=${BUILD_DIR}/tensorflow/models
+
+ENV PYTHONPATH=:${TENSORFLOW_MODELS}/research:${TENSORFLOW_MODELS}/research/slim
 
 WORKDIR ${WORK_DIR}
 
@@ -13,6 +16,13 @@ RUN apt-get update && apt-get upgrade -y
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get install -y             \
     python3.7                      \
+    zlib1g-dev                     \
+    libffi-dev                     \
+    libssl-dev                     \
+    ffmpeg                         \
+    libsm6                         \
+    libxext6                       \
+    protobuf-compiler              \
     wget                           \
     git                            \
     gcc                            \
@@ -36,5 +46,10 @@ RUN mkdir ${BUILD_DIR}                                                          
     ln -s /usr/bin/python3/bin/pip3.7 /usr/bin/pip                                    &&\
 
     # Install requirements
-    pip install -r ${WORK_DIR}/requirements.txt
+    pip install -r ${WORK_DIR}/requirements.txt                                       &&\
+
+    # Install tensorflow object detection utils
+    git clone https://github.com/tensorflow/models.git ${TENSORFLOW_MODELS}           &&\
+    cd ${TENSORFLOW_MODELS}/research                                                  &&\
+    protoc object_detection/protos/*.proto --python_out=.
 

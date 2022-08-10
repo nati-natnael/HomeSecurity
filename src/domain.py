@@ -14,30 +14,8 @@ class Stream:
         self.collection = collections.deque(maxlen=queue_size)
 
 
-class ServerConfig:
-    def __init__(self, port, source_streams):
-        self.port = port
-        self.model_dir = None
-        self.label_dir = None
-        self.source_streams: list[SourceStreamConfig] = source_streams
-
-
 class SourceStreamConfig:
-    def __init__(self, source_id, port, queue_size, object_detection_enabled):
+    def __init__(self, source_id, port, queue_size):
         self.id = source_id
         self.port = port
         self.queue_size = queue_size
-        self.object_detection_enabled = object_detection_enabled
-
-
-class ModelConfig:
-    def __init__(self, base_url, name, date):
-        self.base_url = base_url
-        self.name = name
-        self.date = date
-
-
-class LabelConfig:
-    def __init__(self, base_url, name):
-        self.base_url = base_url
-        self.name = name

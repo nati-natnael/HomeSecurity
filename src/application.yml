@@ -1,16 +1,7 @@
 ---
 port: 8080
 
-model:
-  base_url: "http://download.tensorflow.org/models/object_detection/tf2"
-  name: "ssd_mobilenet_v2_320x320_coco17_tpu-8"
-  date: "20200711"
-
-label:
-  base_url: 'https://raw.githubusercontent.com/tensorflow/models/master/research/object_detection/data'
-  name: 'mscoco_label_map.pbtxt'
-
-source-streams:
+source_streams:
   - id: 0
     port: 5555
     queue_size: 5

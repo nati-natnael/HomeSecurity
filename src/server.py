@@ -1,5 +1,4 @@
 import zmq
-import cv2
 import yaml
 import flask
 import logging
@@ -10,8 +9,7 @@ from zmq import Socket
 from time import sleep
 from flask import Response
 from collections import namedtuple
-
-from domain import Stream, StreamSchema, ServerConfig
+from domain import Stream, StreamSchema
 
 logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 
@@ -19,19 +17,17 @@ shared_stream_buffers = []
 
 
 class SourceStreamThread(threading.Thread):
-    def __init__(self, stream=None, model_dir=None, label_dir=None):
+    def __init__(self, stream=None):
         super(SourceStreamThread, self).__init__()
         if stream is None:
-            raise ValueError("stream required")
+            raise ValueError("source stream required")
 
         self.name = "SourceStreamThread"
         self.stream: Stream = stream
-        self.label_dir = label_dir
-        self.model_dir = model_dir
         return
 
     def run(self):
-        logging.info(f"Source stream thread started, listening at {self.stream.port}")
+        logging.info(f"Source stream started, listening at port {self.stream.port}")
 
         context = zmq.Context()
         socket: Socket = context.socket(zmq.SUB)
@@ -82,39 +78,55 @@ class FlaskServer:
 class Server:
     THREAD_SLEEP = 0.0005  # in seconds
 
-    def __init__(self):
-        self.config = ServerConfig(port=8080, source_streams=[])
+    def __init__(self, config_file_path):
+        self.config_file_path = config_file_path
 
-    def load_server_config(self, config_file_path):
+    def start(self):
+        port = 8080
+        sources = []
+
         try:
-            with open(config_file_path, 'r') as file:
-                config_dict = yaml.safe_load(file)
+            with open(self.config_file_path, 'r') as file:
+                config = yaml.safe_load(file)
 
-                self.config.port = config_dict['port']
+                port = config.get('port')
+                source_streams = config.get('source_streams')
 
-                streams = config_dict['source-streams']
+                streams = []
+                if source_streams:
+                    streams = source_streams
+
                 for stream in streams:
-                    source_stream = namedtuple("SourceStreamConfig", stream.keys())(*stream.values())
-                    self.config.source_streams.append(source_stream)
+                    source = namedtuple("SourceStreamConfig", stream.keys())(*stream.values())
+                    sources.append(source)
 
         except IOError as e:
             logging.error(f"Exception encountered, {e}")
 
-    def start(self):
-        self.load_server_config('application.yml')
+        # Config values
+        source_config = ""
+        for i, source in enumerate(sources):
+            source_config += \
+                f"""
+                \t#{i + 1} -> id: {source.id}, port: {source.port}, queue size: {source.queue_size}"""
+
+        logging.info(
+            f"""
+            configs
+                port    : {port}
+                sources : {source_config}
+            """
+        )
+
+        if not sources:
+            logging.info("no stream sources configured. server has stopped")
+            return
 
         # Start source stream threads
-        for s_stream in self.config.source_streams:
-            shared_stream_buffers.append(Stream(s_stream.id, s_stream.port, s_stream.queue_size))
+        for source in sources:
+            shared_stream_buffers.append(Stream(source.id, source.port, source.queue_size))
+            SourceStreamThread(source).start()
 
-            s_stream_thread = SourceStreamThread(
-                s_stream,
-                self.config.model_dir,
-                self.config.label_dir)
-
-            s_stream_thread.start()
-
-            logging.info(f"Start source stream, source id {s_stream.id}, port {s_stream.port}")
-
-        api = FlaskServer(port=self.config.port)
+        # This server handles stream requests from users
+        api = FlaskServer(port=port)
         api.run()
