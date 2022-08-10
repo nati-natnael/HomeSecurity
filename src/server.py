@@ -16,6 +16,19 @@ logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(mes
 shared_stream_buffers = []
 
 
+def stream_video(stream_id: int):
+    logging.info(f"streaming video from stream: {stream_id}")
+
+    stream_buffer = shared_stream_buffers[stream_id]
+
+    while True:
+        if stream_buffer.collection:
+            image = stream_buffer.collection[0]
+            yield b' --frame\r\n' b'Content-type: image/jpeg\r\n\r\n' + image + b'\r\n'
+
+        sleep(Server.THREAD_SLEEP)
+
+
 class SourceStreamThread(threading.Thread):
     def __init__(self, stream=None):
         super(SourceStreamThread, self).__init__()
@@ -40,39 +53,6 @@ class SourceStreamThread(threading.Thread):
         while True:
             incoming_frame = socket.recv()
             stream_buffer.collection.append(incoming_frame)
-
-
-class FlaskServer:
-    def __init__(self, port):
-        self.port = port
-        return
-
-    @staticmethod
-    def video_stream(stream_id: int):
-        logging.info(f"streaming video from stream: {stream_id}")
-
-        stream_buffer = shared_stream_buffers[stream_id]
-
-        while True:
-            if stream_buffer.collection:
-                image = stream_buffer.collection[0]
-                yield b' --frame\r\n' b'Content-type: image/jpeg\r\n\r\n' + image + b'\r\n'
-
-            sleep(Server.THREAD_SLEEP)
-
-    def run(self):
-        app = flask.Flask("API")
-
-        @app.route('/streams')
-        def stream_info():
-            stream_schema = StreamSchema(many=True)
-            return {'streams': stream_schema.dump(shared_stream_buffers)}
-
-        @app.route('/streams/<int:stream_id>')
-        def stream_by(stream_id: int):
-            return Response(FlaskServer.video_stream(stream_id), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-        app.run(host="0.0.0.0", port=self.port)
 
 
 class Server:
@@ -128,5 +108,15 @@ class Server:
             SourceStreamThread(source).start()
 
         # This server handles stream requests from users
-        api = FlaskServer(port=port)
-        api.run()
+        app = flask.Flask("API")
+
+        @app.route('/streams')
+        def stream_info():
+            stream_schema = StreamSchema(many=True)
+            return {'streams': stream_schema.dump(shared_stream_buffers)}
+
+        @app.route('/streams/<int:stream_id>')
+        def stream_by(stream_id: int):
+            return Response(stream_video(stream_id), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+        app.run(host="0.0.0.0", port=port)
