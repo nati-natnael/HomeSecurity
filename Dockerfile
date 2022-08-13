@@ -14,6 +14,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
     apt-get install -y             \
     zlib1g-dev                     \
     libffi-dev                     \
+    libssl-dev                     \
     wget                           \
     git                            \
     gcc                            \
