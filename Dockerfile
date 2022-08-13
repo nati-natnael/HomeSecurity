@@ -9,5 +9,5 @@ COPY . .
 
 RUN python -m pip install -r ${WORK_DIR}/requirements.txt
 
-CMD ["python", "$WORK_DIR/src/main.py", "$WORK_DIR/src/application.yml"]
+CMD ["python", "$WORK_DIR/src/main.py", "${WORK_DIR}/src/application.yml"]
 
