@@ -29,8 +29,7 @@ def stream_video(stream_id: int):
 
 
 class SourceStreamThread(threading.Thread):
-    DATA_BYTE_COUNT = 60000
-    START_BYTE_COUNT = 14
+    DATA_BYTE_COUNT = 65535
     START_CHARS = 'START'
     START_CHARS_BYTE = b'START'
 
@@ -55,7 +54,7 @@ class SourceStreamThread(threading.Thread):
             incoming_frame = b''
 
             try:
-                incoming_bytes, _ = server.recvfrom(SourceStreamThread.START_BYTE_COUNT)
+                incoming_bytes, _ = server.recvfrom(SourceStreamThread.DATA_BYTE_COUNT)
 
                 start_sequence = incoming_bytes.decode('utf-8').split(',')
 
