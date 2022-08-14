@@ -1,4 +1,5 @@
 import yaml
+import math
 import flask
 import socket
 import logging
@@ -9,13 +10,13 @@ from flask import Response
 from collections import namedtuple
 from domain import Stream, StreamSchema
 
-logging.basicConfig(format="%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s", level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(threadName)-9s [%(levelname)s] - %(message)s', level=logging.DEBUG)
 
 shared_stream_buffers = []
 
 
 def stream_video(stream_id: int):
-    logging.info(f"streaming video from stream: {stream_id}")
+    logging.info(f'streaming video from stream: {stream_id}')
 
     stream_buffer = shared_stream_buffers[stream_id]
 
@@ -28,26 +29,57 @@ def stream_video(stream_id: int):
 
 
 class SourceStreamThread(threading.Thread):
+    DATA_BYTE_COUNT = 60000
+    START_BYTE_COUNT = 14
+    START_CHARS = 'START'
+    START_CHARS_BYTE = b'START'
+
     def __init__(self, stream=None):
         super(SourceStreamThread, self).__init__()
         if stream is None:
-            raise ValueError("source stream required")
+            raise ValueError('source stream required')
 
-        self.name = "SourceStreamThread"
+        self.name = 'SourceStreamThread'
         self.stream: Stream = stream
         return
 
     def run(self):
-        logging.info(f"Source stream started, listening at port {self.stream.port}")
+        logging.info(f'Source stream started, listening at port {self.stream.port}')
 
         server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        server.bind(("0.0.0.0", self.stream.port))
+        server.bind(('0.0.0.0', self.stream.port))
 
         stream_buffer = shared_stream_buffers[self.stream.id]
 
         while True:
-            incoming_frame, address = server.recvfrom(65535)
-            stream_buffer.collection.append(incoming_frame)
+            incoming_frame = b''
+
+            try:
+                incoming_bytes, _ = server.recvfrom(SourceStreamThread.START_BYTE_COUNT)
+
+                start_sequence = incoming_bytes.decode('utf-8').split(',')
+
+                start_str = start_sequence[0]
+                if start_str == SourceStreamThread.START_CHARS:
+                    byte_count = int(start_sequence[1])
+
+                    read_count = math.ceil(byte_count / SourceStreamThread.DATA_BYTE_COUNT)
+                    for _ in range(read_count):
+                        message, _ = server.recvfrom(SourceStreamThread.DATA_BYTE_COUNT)
+
+                        if message.find(SourceStreamThread.START_CHARS_BYTE) > -1:
+                            raise Exception('invalid start message sequence')
+
+                        incoming_frame += message
+
+                    stream_buffer.collection.append(incoming_frame)
+                else:
+                    logging.error(f'invalid message start {start_str}')
+            except OSError as _:
+                # ignore
+                pass
+            except Exception as ex:
+                logging.error(f'unknown error: {ex}')
 
 
 class Server:
@@ -72,29 +104,29 @@ class Server:
                     streams = source_streams
 
                 for stream in streams:
-                    source = namedtuple("SourceStreamConfig", stream.keys())(*stream.values())
+                    source = namedtuple('SourceStreamConfig', stream.keys())(*stream.values())
                     sources.append(source)
 
         except IOError as e:
-            logging.error(f"Exception encountered, {e}")
+            logging.error(f'Exception encountered, {e}')
 
         # Config values
-        source_config = ""
+        source_config = ''
         for i, source in enumerate(sources):
             source_config += \
-                f"""
-                \t#{i + 1} -> id: {source.id}, port: {source.port}, queue size: {source.queue_size}"""
+                f'''
+                \t#{i + 1} -> id: {source.id}, port: {source.port}, queue size: {source.queue_size}'''
 
         logging.info(
-            f"""
+            f'''
             configs
                 port    : {port}
                 sources : {source_config}
-            """
+            '''
         )
 
         if not sources:
-            logging.info("no stream sources configured. server has stopped")
+            logging.info('no stream sources configured. server has stopped')
             return
 
         # Start source stream threads
@@ -103,7 +135,7 @@ class Server:
             SourceStreamThread(source).start()
 
         # This server handles stream requests from users
-        app = flask.Flask("API")
+        app = flask.Flask('API')
 
         @app.route('/streams')
         def stream_info():
@@ -114,4 +146,4 @@ class Server:
         def stream_by(stream_id: int):
             return Response(stream_video(stream_id), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-        app.run(host="0.0.0.0", port=port)
+        app.run(host='0.0.0.0', port=port)
