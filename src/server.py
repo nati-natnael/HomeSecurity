@@ -1,11 +1,9 @@
-import zmq
 import yaml
 import flask
+import socket
 import logging
 import threading
-import numpy as np
 
-from zmq import Socket
 from time import sleep
 from flask import Response
 from collections import namedtuple
@@ -42,16 +40,13 @@ class SourceStreamThread(threading.Thread):
     def run(self):
         logging.info(f"Source stream started, listening at port {self.stream.port}")
 
-        context = zmq.Context()
-        socket: Socket = context.socket(zmq.SUB)
-        socket.bind(f"tcp://*:{self.stream.port}")
-        socket.setsockopt(zmq.CONFLATE, 1)
-        socket.setsockopt_string(zmq.SUBSCRIBE, np.unicode(''))
+        server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        server.bind(("0.0.0.0", self.stream.port))
 
         stream_buffer = shared_stream_buffers[self.stream.id]
 
         while True:
-            incoming_frame = socket.recv()
+            incoming_frame, address = server.recvfrom(65535)
             stream_buffer.collection.append(incoming_frame)
 
 
