@@ -1,3 +1,4 @@
+import re
 import yaml
 import math
 import flask
@@ -29,7 +30,7 @@ def stream_video(stream_id: int):
 
 
 class SourceStreamThread(threading.Thread):
-    DATA_BYTE_COUNT = 65535
+    DATA_BYTE_COUNT = 60000
     START_CHARS = 'START'
     START_CHARS_BYTE = b'START'
 
@@ -54,26 +55,34 @@ class SourceStreamThread(threading.Thread):
             incoming_frame = b''
 
             try:
-                incoming_bytes, _ = server.recvfrom(SourceStreamThread.DATA_BYTE_COUNT)
+                incoming_bytes, _ = server.recvfrom(14)
+
+                if not re.match(b'^START,\\d{8}$', incoming_bytes):
+                    continue
 
                 start_sequence = incoming_bytes.decode('utf-8').split(',')
 
-                start_str = start_sequence[0]
-                if start_str == SourceStreamThread.START_CHARS:
-                    byte_count = int(start_sequence[1])
+                byte_count = int(start_sequence[1])
 
-                    read_count = math.ceil(byte_count / SourceStreamThread.DATA_BYTE_COUNT)
-                    for _ in range(read_count):
-                        message, _ = server.recvfrom(SourceStreamThread.DATA_BYTE_COUNT)
+                read_count = math.ceil(byte_count / SourceStreamThread.DATA_BYTE_COUNT)
 
-                        if message.find(SourceStreamThread.START_CHARS_BYTE) > -1:
-                            raise Exception('invalid start message sequence')
+                for x in range(0, byte_count, SourceStreamThread.DATA_BYTE_COUNT):
+                    start = x
+                    end = start + SourceStreamThread.DATA_BYTE_COUNT
 
-                        incoming_frame += message
+                    if end > byte_count:
+                        end = byte_count
 
-                    stream_buffer.collection.append(incoming_frame)
-                else:
-                    logging.error(f'invalid message start {start_str}')
+                    read_byte_count = end - start
+
+                    message, _ = server.recvfrom(read_byte_count)
+
+                    if not re.match(b'^START,\\d{8}$', incoming_bytes):
+                        raise Exception('invalid start message sequence')
+
+                    incoming_frame += message
+
+                stream_buffer.collection.append(incoming_frame)
             except OSError as _:
                 # ignore
                 pass
