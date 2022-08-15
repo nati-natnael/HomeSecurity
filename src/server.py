@@ -78,7 +78,7 @@ class SourceStreamThread(threading.Thread):
 
                     message, _ = server.recvfrom(read_byte_count)
 
-                    if not re.match(b'^START,\\d{8}$', message):
+                    if re.match(b'^START,\\d{8}$', message):
                         raise Exception('invalid start message sequence')
 
                     incoming_frame += message
