@@ -24,7 +24,6 @@ def stream_video(stream_id: int):
     while True:
         if stream_buffer.collection:
             image = stream_buffer.collection[0]
-            logging.info(f"streaming image {image[:10]} to {stream_id}")
             yield b' --frame\r\n' b'Content-type: image/jpeg\r\n\r\n' + image + b'\r\n'
 
         sleep(Server.THREAD_SLEEP)
