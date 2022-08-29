@@ -1,13 +1,13 @@
 import re
 import yaml
-import math
 import flask
 import socket
 import logging
-import threading
 
 from time import sleep
 from flask import Response
+from flask_cors import CORS
+from threading import Thread
 from collections import namedtuple
 from domain import Stream, StreamSchema
 
@@ -29,13 +29,14 @@ def stream_video(stream_id: int):
         sleep(Server.THREAD_SLEEP)
 
 
-class SourceStreamThread(threading.Thread):
+class SourceStreamThread(Thread):
+    START_MSG_BYTE_COUNT = 14
     DATA_BYTE_COUNT = 60000
-    START_CHARS = 'START'
-    START_CHARS_BYTE = b'START'
+    MAX_IMAGE_BYTE_COUNT = 500000
 
     def __init__(self, stream=None):
         super(SourceStreamThread, self).__init__()
+
         if stream is None:
             raise ValueError('source stream required')
 
@@ -44,27 +45,30 @@ class SourceStreamThread(threading.Thread):
         return
 
     def run(self):
-        logging.info(f'Source stream started, listening at port {self.stream.port}')
+        logging.info(f'source stream started, listening at port {self.stream.port}')
 
         server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         server.bind(('0.0.0.0', self.stream.port))
 
         stream_buffer = shared_stream_buffers[self.stream.id]
 
+        start_sequence_pattern = re.compile(b'^START,\\d{8}$')
+
         while True:
             incoming_frame = b''
 
             try:
-                incoming_bytes, _ = server.recvfrom(14)
+                incoming_bytes, _ = server.recvfrom(SourceStreamThread.START_MSG_BYTE_COUNT)
 
-                if not re.match(b'^START,\\d{8}$', incoming_bytes):
-                    continue
+                # First message needs to be start sequence
+                if not re.match(start_sequence_pattern, incoming_bytes):
+                    raise Exception('invalid start sequence')
 
                 start_sequence = incoming_bytes.decode('utf-8').split(',')
 
                 byte_count = int(start_sequence[1])
-
-                read_count = math.ceil(byte_count / SourceStreamThread.DATA_BYTE_COUNT)
+                if byte_count > SourceStreamThread.MAX_IMAGE_BYTE_COUNT:
+                    raise Exception(f'image size too big: {byte_count}')
 
                 for x in range(0, byte_count, SourceStreamThread.DATA_BYTE_COUNT):
                     start = x
@@ -77,7 +81,7 @@ class SourceStreamThread(threading.Thread):
 
                     message, _ = server.recvfrom(read_byte_count)
 
-                    if re.match(b'^START,\\d{8}$', message):
+                    if re.match(start_sequence_pattern, message):
                         raise Exception('invalid start message sequence')
 
                     incoming_frame += message
@@ -87,7 +91,7 @@ class SourceStreamThread(threading.Thread):
                 # ignore
                 pass
             except Exception as ex:
-                logging.error(f'unknown error: {ex}')
+                logging.error(ex)
 
 
 class Server:
@@ -100,6 +104,7 @@ class Server:
         port = 8080
         sources = []
 
+        # Read config file
         try:
             with open(self.config_file_path, 'r') as file:
                 config = yaml.safe_load(file)
@@ -118,7 +123,7 @@ class Server:
         except IOError as e:
             logging.error(f'Exception encountered, {e}')
 
-        # Config values
+        # Print config values
         source_config = ''
         for i, source in enumerate(sources):
             source_config += \
@@ -139,11 +144,13 @@ class Server:
 
         # Start source stream threads
         for source in sources:
-            shared_stream_buffers.append(Stream(source.id, source.port, source.queue_size))
+            stream = Stream(source.id, source.port, source.queue_size)
+            shared_stream_buffers.append(stream)
             SourceStreamThread(source).start()
 
         # This server handles stream requests from users
         app = flask.Flask('API')
+        CORS(app)
 
         @app.route('/streams')
         def stream_info():
