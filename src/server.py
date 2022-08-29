@@ -99,17 +99,21 @@ class Server:
 
     def __init__(self, config_file_path):
         self.config_file_path = config_file_path
+        self.port = 8080
+        self.sources = []
 
     def start(self):
-        port = 8080
-        sources = []
+        self.read_config()
+        self.print_configs()
+        self.start_source_stream_threads()
+        self.start_api_thread()
 
-        # Read config file
+    def read_config(self):
         try:
             with open(self.config_file_path, 'r') as file:
                 config = yaml.safe_load(file)
 
-                port = config.get('port')
+                self.port = config.get('port')
                 source_streams = config.get('source_streams')
 
                 streams = []
@@ -118,36 +122,37 @@ class Server:
 
                 for stream in streams:
                     source = namedtuple('SourceStreamConfig', stream.keys())(*stream.values())
-                    sources.append(source)
+                    self.sources.append(source)
 
         except IOError as e:
             logging.error(f'Exception encountered, {e}')
 
-        # Print config values
+    def print_configs(self):
         source_config = ''
-        for i, source in enumerate(sources):
+        for i, source in enumerate(self.sources):
             source_config += \
                 f'''
-                \t#{i + 1} -> id: {source.id}, port: {source.port}, queue size: {source.queue_size}'''
+                        \t#{i + 1} -> id: {source.id}, port: {source.port}, queue size: {source.queue_size}'''
 
         logging.info(
             f'''
-            configs
-                port    : {port}
-                sources : {source_config}
-            '''
+                    configs
+                        port    : {self.port}
+                        sources : {source_config}
+                    '''
         )
 
-        if not sources:
+    def start_source_stream_threads(self):
+        if not self.sources:
             logging.info('no stream sources configured. server has stopped')
             return
 
-        # Start source stream threads
-        for source in sources:
+        for source in self.sources:
             stream = Stream(source.id, source.port, source.queue_size)
             shared_stream_buffers.append(stream)
             SourceStreamThread(source).start()
 
+    def start_api_thread(self):
         # This server handles stream requests from users
         app = flask.Flask('API')
         CORS(app)
@@ -161,4 +166,4 @@ class Server:
         def stream_by(stream_id: int):
             return Response(stream_video(stream_id), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-        app.run(host='0.0.0.0', port=port)
+        app.run(host='0.0.0.0', port=self.port)
