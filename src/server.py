@@ -93,6 +93,8 @@ class SourceStreamThread(Thread):
             except Exception as ex:
                 logging.error(ex)
 
+            sleep(Server.THREAD_SLEEP)
+
 
 class Server:
     THREAD_SLEEP = 0.0005  # in seconds
