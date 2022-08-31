@@ -58,33 +58,7 @@ class SourceStreamThread(Thread):
             incoming_frame = b''
 
             try:
-                incoming_bytes, _ = server.recvfrom(SourceStreamThread.START_MSG_BYTE_COUNT)
-
-                # First message needs to be start sequence
-                if not re.match(start_sequence_pattern, incoming_bytes):
-                    raise Exception('invalid start sequence')
-
-                start_sequence = incoming_bytes.decode('utf-8').split(',')
-
-                byte_count = int(start_sequence[1])
-                if byte_count > SourceStreamThread.MAX_IMAGE_BYTE_COUNT:
-                    raise Exception(f'image size too big: {byte_count}')
-
-                for x in range(0, byte_count, SourceStreamThread.DATA_BYTE_COUNT):
-                    start = x
-                    end = start + SourceStreamThread.DATA_BYTE_COUNT
-
-                    if end > byte_count:
-                        end = byte_count
-
-                    read_byte_count = end - start
-
-                    message, _ = server.recvfrom(read_byte_count)
-
-                    if re.match(start_sequence_pattern, message):
-                        raise Exception('invalid start message sequence')
-
-                    incoming_frame += message
+                incoming_bytes, _ = server.recvfrom(SourceStreamThread.DATA_BYTE_COUNT)
 
                 stream_buffer.collection.append(incoming_frame)
             except OSError as _:
