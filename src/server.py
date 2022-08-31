@@ -91,8 +91,7 @@ class SourceStreamThread(Thread):
                 # ignore
                 pass
             except Exception as ex:
-                # logging.error(ex)
-                pass
+                logging.error(ex)
 
 
 class Server:
