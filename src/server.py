@@ -29,13 +29,13 @@ def stream_video(stream_id: int):
         sleep(Server.THREAD_SLEEP)
 
 
-class SourceStreamThread(Thread):
+class SourceStreamListener(Thread):
     START_MSG_BYTE_COUNT = 14
     DATA_BYTE_COUNT = 60000
     MAX_IMAGE_BYTE_COUNT = 500000
 
     def __init__(self, stream=None):
-        super(SourceStreamThread, self).__init__()
+        super(SourceStreamListener, self).__init__()
 
         if stream is None:
             raise ValueError('source stream required')
@@ -58,7 +58,7 @@ class SourceStreamThread(Thread):
             incoming_frame = b''
 
             try:
-                incoming_bytes, _ = server.recvfrom(SourceStreamThread.START_MSG_BYTE_COUNT)
+                incoming_bytes, _ = server.recvfrom(SourceStreamListener.START_MSG_BYTE_COUNT)
 
                 # First message needs to be start sequence
                 if not re.match(start_sequence_pattern, incoming_bytes):
@@ -67,12 +67,12 @@ class SourceStreamThread(Thread):
                 start_sequence = incoming_bytes.decode('utf-8').split(',')
 
                 byte_count = int(start_sequence[1])
-                if byte_count > SourceStreamThread.MAX_IMAGE_BYTE_COUNT:
+                if byte_count > SourceStreamListener.MAX_IMAGE_BYTE_COUNT:
                     raise Exception(f'image size too big: {byte_count}')
 
-                for x in range(0, byte_count, SourceStreamThread.DATA_BYTE_COUNT):
+                for x in range(0, byte_count, SourceStreamListener.DATA_BYTE_COUNT):
                     start = x
-                    end = start + SourceStreamThread.DATA_BYTE_COUNT
+                    end = start + SourceStreamListener.DATA_BYTE_COUNT
 
                     if end > byte_count:
                         end = byte_count
@@ -107,8 +107,8 @@ class Server:
     def start(self):
         self.read_config()
         self.print_configs()
-        self.start_source_stream_threads()
-        self.start_api_thread()
+        self.start_source_stream_listeners()
+        self.start_api()
 
     def read_config(self):
         try:
@@ -144,7 +144,7 @@ class Server:
                     '''
         )
 
-    def start_source_stream_threads(self):
+    def start_source_stream_listeners(self):
         if not self.sources:
             logging.info('no stream sources configured. server has stopped')
             return
@@ -152,9 +152,9 @@ class Server:
         for source in self.sources:
             stream = Stream(source.id, source.port, source.queue_size)
             shared_stream_buffers.append(stream)
-            SourceStreamThread(source).start()
+            SourceStreamListener(source).start()
 
-    def start_api_thread(self):
+    def start_api(self):
         # This server handles stream requests from users
         app = flask.Flask('API')
         CORS(app)
