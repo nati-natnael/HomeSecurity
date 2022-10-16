@@ -1,9 +1,10 @@
-import re
+import zmq
 import yaml
 import flask
-import socket
 import logging
+import numpy as np
 
+from zmq import Socket
 from time import sleep
 from flask import Response
 from flask_cors import CORS
@@ -47,53 +48,17 @@ class SourceStreamListener(Thread):
     def run(self):
         logging.info(f'source stream started, listening at port {self.stream.port}')
 
-        server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        server.bind(('0.0.0.0', self.stream.port))
+        context = zmq.Context()
+        server: Socket = context.socket(zmq.SUB)
+        server.bind(f"tcp://*:{self.stream.port}")
+        server.setsockopt(zmq.CONFLATE, 1)
+        server.setsockopt_string(zmq.SUBSCRIBE, np.unicode(''))
 
         stream_buffer = shared_stream_buffers[self.stream.id]
 
-        start_sequence_pattern = re.compile(b'^START,\\d{8}$')
-
         while True:
-            incoming_frame = b''
-
-            try:
-                incoming_bytes, _ = server.recvfrom(SourceStreamListener.START_MSG_BYTE_COUNT)
-
-                # First message needs to be start sequence
-                if not re.match(start_sequence_pattern, incoming_bytes):
-                    raise Exception('invalid start sequence')
-
-                start_sequence = incoming_bytes.decode('utf-8').split(',')
-
-                byte_count = int(start_sequence[1])
-                if byte_count > SourceStreamListener.MAX_IMAGE_BYTE_COUNT:
-                    raise Exception(f'image size too big: {byte_count}')
-
-                for x in range(0, byte_count, SourceStreamListener.DATA_BYTE_COUNT):
-                    start = x
-                    end = start + SourceStreamListener.DATA_BYTE_COUNT
-
-                    if end > byte_count:
-                        end = byte_count
-
-                    read_byte_count = end - start
-
-                    message, _ = server.recvfrom(read_byte_count)
-
-                    if re.match(start_sequence_pattern, message):
-                        raise Exception('invalid start message sequence')
-
-                    incoming_frame += message
-
-                stream_buffer.collection.append(incoming_frame)
-            except OSError as _:
-                # ignore
-                pass
-            except Exception as ex:
-                logging.error(ex)
-
-            sleep(Server.THREAD_SLEEP)
+            incoming_frame = server.recv()
+            stream_buffer.collection.append(incoming_frame)
 
 
 class Server:
